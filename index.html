@@ -517,6 +517,18 @@
       });
     });
 
+    // === Fix: Auto-sync delivered_qty with ordered_qty ===
+    document.addEventListener('DOMContentLoaded', () => {
+      const orderedInput = document.getElementById('ordered-qty-bill');
+      const deliveredInput = document.getElementById('delivered-qty-bill');
+      if (orderedInput && deliveredInput) {
+        orderedInput.addEventListener('input', function() {
+          const ordered = parseInt(this.value) || 0;
+          deliveredInput.value = ordered;
+        });
+      }
+    });
+
     // === Supabase Client ===
     let supabase;
     const SUPABASE_URL = 'https://nefynefeuwdcfnargqow.supabase.co';

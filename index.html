@@ -484,8 +484,8 @@
 
     // === Supabase Client ===
     let supabase;
-    const SUPABASE_URL = 'https://your-project.supabase.co'; // Replace with your URL
-    const SUPABASE_ANON_KEY = 'your-anon-key'; // Replace with your anon key
+    const SUPABASE_URL = 'https://nefynfeuwdcfnargqow.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_ecTPtPrHk68w1VUAv2cBqg_6azn3_Mf';
 
     function initSupabase() {
       if (!SUPABASE_URL || !SUPABASE_ANON_KEY || SUPABASE_URL === 'https://your-project.supabase.co') {
@@ -494,7 +494,7 @@
       }
 
       try {
-        supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         return supabase;
       } catch (error) {
         console.error('Supabase init failed:', error);

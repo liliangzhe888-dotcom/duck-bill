@@ -845,167 +845,220 @@
       }
     }
 
-    // === v3: Today Orders Rendering ===
-    function renderTodayOrders() {
-      if (!supabase) return;
-      const today = new Date().toISOString().split('T')[0];
-      const container = document.getElementById('today-orders');
-      if (!container) return;
+  // === Fix 1: Auto-sync delivered_qty with ordered_qty ===
+  document.getElementById('ordered-qty-bill').addEventListener('input', function() {
+    const ordered = parseInt(this.value) || 0;
+    document.getElementById('delivered-qty-bill').value = ordered;
+  });
 
-      supabase
+  // === Fix 2: Safe bill record logic ===
+  async function recordBill() {
+    const customerInput = document.getElementById('customer-bill');
+    const orderedQtyInput = document.getElementById('ordered-qty-bill');
+    const deliveredQtyInput = document.getElementById('delivered-qty-bill');
+    const paidSelect = document.getElementById('paid-bill');
+
+    const customerName = customerInput.value.trim();
+    const orderedQty = parseInt(orderedQtyInput.value) || 0;
+    const deliveredQty = parseInt(deliveredQtyInput.value) || 0;
+    const paid = paidSelect.value === 'true';
+
+    if (!customerName) {
+      showToast('⚠️ 请填写客户姓名', 'warning');
+      return;
+    }
+
+    if (orderedQty <= 0) {
+      showToast('⚠️ 订货数量必须大于 0', 'warning');
+      return;
+    }
+
+    try {
+      // Get customer ID
+      const { data: customers, error: customerError } = await supabase
+        .from('customers')
+        .select('id, price')
+        .eq('name', customerName)
+        .limit(1);
+
+      if (customerError) throw customerError;
+      if (customers.length === 0) {
+        showToast('⚠️ 客户未找到，请先在【客户管理】页面添加', 'warning');
+        return;
+      }
+
+      const customer = customers[0];
+      const amount = customer.price * orderedQty;
+      const date = new Date().toISOString().split('T')[0];
+
+      const { error: billError } = await supabase
         .from('bills')
-        .select('date, qty, ordered_qty, delivered_qty, customers!inner(name)')
-        .eq('date', today)
-        .then(({ data, error }) => {
-          if (error) throw error;
-
-          if (!data || data.length === 0) {
-            container.innerHTML = '<p>暂无今日订单</p>';
-            return;
+        .insert([
+          {
+            customer_id: customer.id,
+            ordered_qty: orderedQty,
+            delivered_qty: deliveredQty,
+            amount,
+            paid,
+            date
           }
+        ]);
 
-          const orders = {};
-          let totalQty = 0;
-          data.forEach(bill => {
-            const name = bill.customers?.name || '未知';
-            if (!orders[name]) orders[name] = { ordered: 0, delivered: 0 };
-            orders[name].ordered += bill.ordered_qty || bill.qty || 0;
-            orders[name].delivered += bill.delivered_qty || bill.qty || 0;
-            totalQty += bill.ordered_qty || bill.qty || 0;
-          });
+      if (billError) throw billError;
 
-          const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
-          const d = new Date();
-          const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${weekdays[d.getDay()]}`;
+      showToast('✅ 记录成功！', 'success');
+      customerInput.value = '';
+      orderedQtyInput.value = '1';
+      deliveredQtyInput.value = '1';
+      paidSelect.value = 'false';
 
-          let html = `<h3 style="margin-top:0;margin-bottom:var(--spacing-sm);font-size:1.125rem;">烤鸭生产单 · ${dateStr}</h3>`;
-          Object.keys(orders).forEach(customer => {
-            html += `<div class="ar-item">${customer} × ${orders[customer].ordered}只<div style="font-size:0.875rem;color:#666;margin-top:4px;">（实做：${orders[customer].delivered}只）</div></div>`;
-          });
-          html += `<div class="ar-item" style="font-weight:bold;border-top:1px solid #e0e0e0;padding-top:var(--spacing-sm);margin-top:var(--spacing-sm);">今日总需制作：<span class="ar-amount">${totalQty}只</span></div>`;
+      // Refresh today's orders
+      renderTodayOrders();
+    } catch (error) {
+      console.error('Record bill failed:', error);
+      showToast(`❌ 记录失败：${error.message}`, 'error');
+    }
+  }
 
-          container.innerHTML = html;
-        })
-        .catch(err => {
-          console.error('Render today orders failed:', err);
-          container.innerHTML = '<p>加载失败</p>';
-        });
+  // === Fix 3: Safe today orders rendering ===
+  function renderTodayOrders() {
+    const today = new Date().toISOString().split('T')[0];
+    const bills = getBills().filter(bill => bill.date === today);
+
+    if (bills.length === 0) {
+      document.getElementById('today-orders').innerHTML = '<p>暂无今日订单</p>';
+      return;
     }
 
-    // === v3: Init Date Pickers ===
-    function initDatePickers() {
-      const today = new Date();
-      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-      const fmt = d => d.toISOString().split('T')[0];
-      const startEl = document.getElementById('date-start');
-      const endEl = document.getElementById('date-end');
-      if (startEl) startEl.value = fmt(firstDay);
-      if (endEl) endEl.value = fmt(today);
+    // Group by customer
+    const orders = {};
+    let totalOrdered = 0;
+
+    bills.forEach(bill => {
+      // Safe access: use ordered_qty, fallback to qty if missing
+      const ordered = bill.ordered_qty !== undefined ? bill.ordered_qty : (bill.qty || 0);
+      const delivered = bill.delivered_qty !== undefined ? bill.delivered_qty : (bill.qty || 0);
+
+      if (!orders[bill.customer]) {
+        orders[bill.customer] = { ordered: 0, delivered: 0 };
+      }
+      orders[bill.customer].ordered += ordered;
+      orders[bill.customer].delivered += delivered;
+      totalOrdered += ordered;
+    });
+
+    // Generate HTML
+    let html = `<h3 style="margin-top:0;margin-bottom:var(--spacing-sm);font-size:1.125rem;">烤鸭生产单 · ${formatDateWithWeekday(new Date())}</h3>`;
+
+    Object.keys(orders).forEach(customer => {
+      const order = orders[customer];
+      html += `<div class="ar-item">
+        ${customer} × ${order.ordered}只
+        <div style="font-size:0.875rem;color:#666;margin-top:4px;">（实做：${order.delivered}只）</div>
+      </div>`;
+    });
+
+    html += `<div class="ar-item" style="font-weight:bold;border-top:1px solid #e0e0e0;padding-top:var(--spacing-sm);margin-top:var(--spacing-sm);">
+      今日总需制作：<span class="ar-amount">${totalOrdered}只</span>
+    </div>`;
+
+    document.getElementById('today-orders').innerHTML = html;
+  }
+
+  // === Fix 4: Safe AR query (handle missing fields) ===
+  async function loadAccountsReceivable() {
+    const startDate = document.getElementById('date-start').value || '';
+    const endDate = document.getElementById('date-end').value || '';
+    const customerFilter = document.getElementById('customer-filter').value;
+
+    if (!startDate || !endDate) {
+      showToast('⚠️ 请先选择开始和结束日期', 'warning');
+      return;
     }
 
-    // === v3: Load Customer Filter ===
-    async function loadCustomerFilter() {
-      try {
-        const { data, error } = await supabase
-          .from('customers')
-          .select('id, name')
-          .order('name', { ascending: true });
+    try {
+      let query = supabase
+        .from('bills')
+        .select(`
+          bills.id,
+          bills.date,
+          bills.ordered_qty,
+          bills.delivered_qty,
+          bills.amount,
+          bills.paid,
+          customers.name
+        `)
+        .join('customers', 'bills.customer_id', 'customers.id')
+        .gte('bills.date', startDate)
+        .lte('bills.date', endDate);
 
-        if (error) throw error;
-
-        const select = document.getElementById('customer-filter');
-        if (!select) return;
-        select.innerHTML = '<option value="all">全部客户</option>';
-        data.forEach(customer => {
-          const option = document.createElement('option');
-          option.value = customer.id;
-          option.textContent = customer.name;
-          select.appendChild(option);
-        });
-      } catch (error) {
-        console.error('Load customers filter failed:', error);
-      }
-    }
-
-    // === Init ===
-    document.addEventListener('DOMContentLoaded', async () => {
-      // Initialize tab
-      initTabFromHash();
-
-      // Initialize Supabase
-      supabase = initSupabase();
-
-      // Load auth status
-      if (supabase) {
-        await updateAuthStatus();
+      if (customerFilter !== 'all') {
+        query = query.eq('customers.id', customerFilter);
       }
 
-      // Load customers
-      if (supabase) {
-        await loadCustomers();
+      const { data, error } = await query.order('bills.date', { ascending: true });
+
+      if (error) throw error;
+
+      const arList = document.getElementById('ar-list');
+      arList.innerHTML = '';
+
+      if (data.length === 0) {
+        arList.innerHTML = '<p>未找到符合条件的账单</p>';
+        return;
       }
 
-      // Init date pickers & customer filter (v3)
-      initDatePickers();
-      if (supabase) {
-        await loadCustomerFilter();
-        renderTodayOrders();
-      }
+      // Group by customer
+      const grouped = {};
+      data.forEach(row => {
+        // Safe access: fallback to row.qty if ordered_qty missing
+        const ordered = row.ordered_qty !== undefined ? row.ordered_qty : (row.qty || 0);
+        const delivered = row.delivered_qty !== undefined ? row.delivered_qty : (row.qty || 0);
 
-      // Event listeners
-      document.getElementById('record-btn').addEventListener('click', recordBill);
-      document.getElementById('add-customer').addEventListener('click', addCustomer);
-      document.getElementById('load-ar').addEventListener('click', loadAccountsReceivable);
-
-      // Production screenshot
-      document.getElementById('screenshot-production').addEventListener('click', async function() {
-        const element = document.getElementById('today-orders');
-        if (!element) return;
-        try {
-          this.style.display = 'none';
-          const canvas = await domtoimage.toPng(element, { bgcolor: '#ffffff', quality: 1.0 });
-          const link = document.createElement('a');
-          const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-          link.download = `烤鸭生产单-${today}.png`;
-          link.href = canvas;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        } catch (error) {
-          console.error('Screenshot failed:', error);
-          showToast('❌ 截图失败，请重试', 'error');
-        } finally {
-          this.style.display = 'block';
+        if (!grouped[row.name]) {
+          grouped[row.name] = { ordered: 0, delivered: 0, amount: 0, paid: 0, unpaid: 0 };
+        }
+        grouped[row.name].ordered += ordered;
+        grouped[row.name].delivered += delivered;
+        grouped[row.name].amount += row.amount;
+        if (row.paid) {
+          grouped[row.name].paid += row.amount;
+        } else {
+          grouped[row.name].unpaid += row.amount;
         }
       });
 
-      // Customer search datalist
-      async function updateCustomerList() {
-        const customersList = document.getElementById('customers-bill');
-        customersList.innerHTML = '';
+      // Render
+      Object.keys(grouped).forEach(name => {
+        const g = grouped[name];
+        const item = document.createElement('div');
+        item.className = 'ar-item';
+        item.innerHTML = `
+          <strong>${name}</strong>
+          <div style="margin-top:4px;font-size:0.875rem;">
+            订货：${g.ordered}只｜实做：${g.delivered}只｜金额：¥${g.amount.toFixed(2)}
+          </div>
+          <div style="margin-top:4px;font-size:0.875rem;">
+            已结：¥${g.paid.toFixed(2)}｜未结：¥${g.unpaid.toFixed(2)}
+          </div>
+        `;
+        arList.appendChild(item);
+      });
+    } catch (error) {
+      console.error('Load AR failed:', error);
+      showToast(`❌ 查询失败：${error.message}`, 'error');
+    }
+  }
 
-        try {
-          const { data, error } = await supabase
-            .from('customers')
-            .select('name')
-            .order('name', { ascending: true });
+  // === Event Listeners ===
+  document.getElementById('record-btn').addEventListener('click', recordBill);
+  document.getElementById('load-ar').addEventListener('click', loadAccountsReceivable);
 
-          if (error) throw error;
-
-          data.forEach(customer => {
-            const option = document.createElement('option');
-            option.value = customer.name;
-            customersList.appendChild(option);
-          });
-        } catch (error) {
-          console.error('Update customer list failed:', error);
-        }
-      }
-
-      if (supabase) {
-        await updateCustomerList();
-      }
-    });
-  </script>
+  // === On DOMContentLoaded ===
+  document.addEventListener('DOMContentLoaded', () => {
+    initDatePickers();
+    loadCustomerFilter();
+    renderTodayOrders();
+  });
 </body>
 </html>

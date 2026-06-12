@@ -346,7 +346,8 @@
 
     <div class="tabs">
       <div class="tab active" data-tab="bill">📝 记账</div>
-      <div class="tab" data-tab="ar">💰 查欠款</div>
+      <div class="tab" data-tab="production">🖨️ 生产单</div>
+      <div class="tab" data-tab="ar">🔍 查账</div>
       <div class="tab" data-tab="customers">👥 客户管理</div>
     </div>
 
@@ -360,28 +361,60 @@
         </div>
 
         <div class="form-group">
-          <label for="qty-bill">数量（只）</label>
-          <input type="number" id="qty-bill" min="1" value="1" step="1">
+          <label for="ordered-qty-bill">订货数量（只）</label>
+          <input type="number" id="ordered-qty-bill" min="1" value="1" step="1">
         </div>
 
         <div class="form-group">
-          <label for="paid-bill">付款状态</label>
+          <label for="delivered-qty-bill">实做数量（只）<br><small style="color:#666;font-size:0.875rem;">（可修改，如回扣、临时加减）</small></label>
+          <input type="number" id="delivered-qty-bill" min="0" value="1" step="1">
+        </div>
+
+        <div class="form-group">
+          <label for="paid-bill">结算状态</label>
           <select id="paid-bill">
-            <option value="false">赊账</option>
-            <option value="true">已付</option>
+            <option value="false">未结</option>
+            <option value="true">已结</option>
           </select>
         </div>
 
         <button id="record-btn" class="btn-block">✅ 记录本单</button>
       </section>
 
-      <!-- Tab: 查欠款 -->
-      <section id="tab-ar" class="tab-content">
-        <h2 class="ar-title">谁还欠钱？</h2>
-        <div id="ar-list">
-          <p>暂无欠款记录</p>
+      <!-- Tab: 今日生产单 -->
+      <section id="tab-production" class="tab-content">
+        <h2 class="ar-title">今日生产单</h2>
+        <div id="today-orders">
+          <p>暂无今日订单</p>
         </div>
-        <button id="export-excel" class="btn-block export-btn">📥 导出为 Excel (.xlsx)</button>
+        <button id="screenshot-production" class="btn-block export-btn">📸 生成今日生产单（可转发给师傅）</button>
+        <p style="font-size:0.875rem;color:#666;margin-top:var(--spacing-md);">📝 此单据可随时更新，请以最新截图为准</p>
+      </section>
+      <section id="tab-ar" class="tab-content">
+        <div class="form-group">
+          <label for="date-start">开始日期</label>
+          <input type="date" id="date-start">
+        </div>
+
+        <div class="form-group">
+          <label for="date-end">结束日期</label>
+          <input type="date" id="date-end">
+        </div>
+
+        <div class="form-group">
+          <label for="customer-filter">客户筛选</label>
+          <select id="customer-filter">
+            <option value="all">全部客户</option>
+            <!-- populated by JS -->
+          </select>
+        </div>
+
+        <button id="load-ar" class="btn-block">🔍 查询账单</button>
+
+        <h3 class="ar-title" style="margin-top: var(--spacing-lg);">账单明细</h3>
+        <div id="ar-list">
+          <p>请先设置日期范围并点击「查询账单」</p>
+        </div>
       </section>
 
       <!-- Tab: 客户管理 -->
@@ -415,9 +448,11 @@
   <div class="toast-container" id="toast-container"></div>
 
   <!-- Supabase CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/dist/main/index.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/dist/umd/supabase.js"></script>
   <!-- SheetJS CDN -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.min.js"></script>
+  <!-- dom-to-image CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/dom-to-image@2.6.0/dist/dom-to-image.min.js"></script>
 
   <script>
     // === Toast System (3KB inline) ===
@@ -484,7 +519,7 @@
 
     // === Supabase Client ===
     let supabase;
-    const SUPABASE_URL = 'https://nefynfeuwdcfnargqow.supabase.co';
+    const SUPABASE_URL = 'https://nefynefeuwdcfnargqow.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_ecTPtPrHk68w1VUAv2cBqg_6azn3_Mf';
 
     function initSupabase() {
@@ -521,20 +556,42 @@
           authStatusEl.textContent = `✅ 已登录：${session.user.email || '用户'}`;
           authStatusEl.style.color = '#4CAF50';
         } else {
-          authStatusEl.innerHTML = `⚠️ 未登录 <button id="login-btn" style="margin-left:8px;padding:4px 12px;background:#2196F3;color:white;border:none;border-radius:4px;font-size:0.875rem;">登录</button>`;
+          authStatusEl.innerHTML = `⚠️ 未登录 <button id="login-btn" style="margin-left:8px;padding:4px 12px;background:#2196F3;color:white;border:none;border-radius:4px;font-size:0.875rem;">登录</button> <button id="register-btn" style="margin-left:4px;padding:4px 12px;background:#4CAF50;color:white;border:none;border-radius:4px;font-size:0.875rem;">注册</button>`;
           authStatusEl.style.color = '#FF9800';
 
           document.getElementById('login-btn').addEventListener('click', async () => {
             try {
+              const email = prompt('请输入邮箱：');
+              if (!email) return;
+              const password = prompt('请输入密码：');
+              if (!password) return;
               const { error } = await supabase.auth.signInWithPassword({
-                email: prompt('请输入邮箱：'),
-                password: prompt('请输入密码：')
+                email: email,
+                password: password
               });
               if (error) throw error;
               showToast('✅ 登录成功！', 'success');
               updateAuthStatus();
             } catch (error) {
               showToast(`❌ 登录失败：${error.message}`, 'error');
+            }
+          });
+
+          document.getElementById('register-btn').addEventListener('click', async () => {
+            try {
+              const email = prompt('请输入邮箱注册：');
+              if (!email) return;
+              const password = prompt('请设置密码（至少6位）：');
+              if (!password) return;
+              const { error } = await supabase.auth.signUp({
+                email: email,
+                password: password
+              });
+              if (error) throw error;
+              showToast('✅ 注册成功！请查看邮箱确认，或联系管理员直接确认', 'success');
+              updateAuthStatus();
+            } catch (error) {
+              showToast(`❌ 注册失败：${error.message}`, 'error');
             }
           });
         }
@@ -638,11 +695,13 @@
     // === Bill Recording ===
     async function recordBill() {
       const customerInput = document.getElementById('customer-bill');
-      const qtyInput = document.getElementById('qty-bill');
+      const orderedInput = document.getElementById('ordered-qty-bill');
+      const deliveredInput = document.getElementById('delivered-qty-bill');
       const paidSelect = document.getElementById('paid-bill');
 
       const customerName = customerInput.value.trim();
-      const qty = parseInt(qtyInput.value) || 1;
+      const orderedQty = parseInt(orderedInput.value) || 1;
+      const deliveredQty = parseInt(deliveredInput.value) || 1;
       const paid = paidSelect.value === 'true';
 
       if (!customerName) {
@@ -651,7 +710,7 @@
       }
 
       try {
-        // Get customer ID
+        // Get customer ID and price
         const { data: customers, error: customerError } = await supabase
           .from('customers')
           .select('id, price')
@@ -665,7 +724,7 @@
         }
 
         const customer = customers[0];
-        const amount = customer.price * qty;
+        const amount = customer.price * orderedQty;
         const date = new Date().toISOString().split('T')[0];
 
         const { error: billError } = await supabase
@@ -673,7 +732,9 @@
           .insert([
             {
               customer_id: customer.id,
-              qty,
+              qty: orderedQty,
+              ordered_qty: orderedQty,
+              delivered_qty: deliveredQty,
               amount,
               paid,
               date
@@ -684,7 +745,8 @@
 
         showToast('✅ 记录成功！', 'success');
         customerInput.value = '';
-        qtyInput.value = '1';
+        orderedInput.value = '1';
+        deliveredInput.value = '1';
         paidSelect.value = 'false';
       } catch (error) {
         console.error('Record bill failed:', error);
@@ -692,62 +754,177 @@
       }
     }
 
-    // === Accounts Receivable ===
+    // === Accounts Receivable (v3) ===
     async function loadAccountsReceivable() {
+      const startDate = document.getElementById('date-start').value || '';
+      const endDate = document.getElementById('date-end').value || '';
+      const customerFilter = document.getElementById('customer-filter').value;
+
+      if (!startDate || !endDate) {
+        showToast('⚠️ 请先选择开始和结束日期', 'warning');
+        return;
+      }
+
       try {
-        // SQL: SELECT c.name, SUM(b.amount) as ar, MAX(b.date) as last_date FROM bills b JOIN customers c ON b.customer_id = c.id WHERE b.paid = false GROUP BY c.name ORDER BY ar DESC
         const { data, error } = await supabase
-          .rpc('get_accounts_receivable'); // Requires PostgreSQL function
+          .from('bills')
+          .select('id, date, qty, ordered_qty, delivered_qty, amount, paid, customer_id, customers!inner(id, name)');
 
         if (error) throw error;
+
+        let filtered = data.filter(bill => {
+          if (bill.date < startDate || bill.date > endDate) return false;
+          if (customerFilter !== 'all' && bill.customer_id != customerFilter) return false;
+          return true;
+        });
+
+        // Sort by date
+        filtered.sort((a, b) => a.date.localeCompare(b.date));
 
         const arList = document.getElementById('ar-list');
         arList.innerHTML = '';
 
-        if (data.length === 0) {
-          arList.innerHTML = '<p>暂无欠款记录</p>';
+        if (filtered.length === 0) {
+          arList.innerHTML = '<p>未找到符合条件的账单</p>';
           return;
         }
 
-        data.forEach(row => {
+        // Group by customer
+        const grouped = {};
+        filtered.forEach(row => {
+          const name = row.customers?.name || '未知';
+          if (!grouped[name]) {
+            grouped[name] = { ordered: 0, delivered: 0, amount: 0, paid: 0, unpaid: 0, count: 0 };
+          }
+          grouped[name].ordered += row.ordered_qty || row.qty || 0;
+          grouped[name].delivered += row.delivered_qty || row.qty || 0;
+          grouped[name].amount += row.amount || 0;
+          if (row.paid) {
+            grouped[name].paid += row.amount || 0;
+          } else {
+            grouped[name].unpaid += row.amount || 0;
+          }
+          grouped[name].count++;
+        });
+
+        // Render
+        Object.keys(grouped).forEach(name => {
+          const g = grouped[name];
           const item = document.createElement('div');
           item.className = 'ar-item';
           item.innerHTML = `
-            ${row.name} → ¥${row.ar.toFixed(2)}
-            <span class="ar-status status-ar">赊账</span>
-            <div style="font-size:0.875rem;color:#666;margin-top:4px;">最后交易：${row.last_date}</div>
+            <strong>${name}</strong>（${g.count}笔）
+            <div style="margin-top:4px;font-size:0.875rem;">
+              订货：${g.ordered}只｜实做：${g.delivered}只｜金额：¥${g.amount.toFixed(2)}
+            </div>
+            <div style="margin-top:4px;font-size:0.875rem;">
+              已结：¥${g.paid.toFixed(2)}｜未结：¥${g.unpaid.toFixed(2)}
+            </div>
           `;
           arList.appendChild(item);
         });
+
+        // Total row
+        const total = document.createElement('div');
+        total.className = 'ar-item';
+        total.style.cssText = 'font-weight:bold;border-top:2px solid #e0e0e0;margin-top:var(--spacing-sm);';
+        const totals = { ordered:0, delivered:0, amount:0, paid:0, unpaid:0 };
+        Object.values(grouped).forEach(g => {
+          totals.ordered += g.ordered;
+          totals.delivered += g.delivered;
+          totals.amount += g.amount;
+          totals.paid += g.paid;
+          totals.unpaid += g.unpaid;
+        });
+        total.innerHTML = `合计：订货${totals.ordered}只｜实做${totals.delivered}只｜¥${totals.amount.toFixed(2)}（已结¥${totals.paid.toFixed(2)}｜未结¥${totals.unpaid.toFixed(2)}）`;
+        arList.appendChild(total);
+
       } catch (error) {
         console.error('Load AR failed:', error);
-        showToast(`❌ 加载欠款失败：${error.message}`, 'error');
+        showToast(`❌ 查询失败：${error.message}`, 'error');
       }
     }
 
-    // === Excel Export ===
-    function exportToExcel(data) {
-      if (!data || data.length === 0) return;
+    // === v3: Today Orders Rendering ===
+    function renderTodayOrders() {
+      if (!supabase) return;
+      const today = new Date().toISOString().split('T')[0];
+      const container = document.getElementById('today-orders');
+      if (!container) return;
 
-      // Create worksheet
-      const ws = XLSX.utils.json_to_sheet(data);
+      supabase
+        .from('bills')
+        .select('date, qty, ordered_qty, delivered_qty, customers!inner(name)')
+        .eq('date', today)
+        .then(({ data, error }) => {
+          if (error) throw error;
 
-      // Set column widths
-      ws['!cols'] = [
-        { wch: 20 }, // 客户名
-        { wch: 15 }, // 欠款金额
-        { wch: 20 }, // 最后交易日期
-        { wch: 12 }  // 状态
-      ];
+          if (!data || data.length === 0) {
+            container.innerHTML = '<p>暂无今日订单</p>';
+            return;
+          }
 
-      // Create workbook and add worksheet
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, '客户账单');
+          const orders = {};
+          let totalQty = 0;
+          data.forEach(bill => {
+            const name = bill.customers?.name || '未知';
+            if (!orders[name]) orders[name] = { ordered: 0, delivered: 0 };
+            orders[name].ordered += bill.ordered_qty || bill.qty || 0;
+            orders[name].delivered += bill.delivered_qty || bill.qty || 0;
+            totalQty += bill.ordered_qty || bill.qty || 0;
+          });
 
-      // Generate Excel file
-      const today = new Date().toISOString().slice(0,10).replace(/-/g, '');
-      XLSX.writeFile(wb, `烤鸭送货账单_${today}.xlsx`);
-      showToast('✅ Excel 导出成功！', 'success');
+          const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
+          const d = new Date();
+          const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${weekdays[d.getDay()]}`;
+
+          let html = `<h3 style="margin-top:0;margin-bottom:var(--spacing-sm);font-size:1.125rem;">烤鸭生产单 · ${dateStr}</h3>`;
+          Object.keys(orders).forEach(customer => {
+            html += `<div class="ar-item">${customer} × ${orders[customer].ordered}只<div style="font-size:0.875rem;color:#666;margin-top:4px;">（实做：${orders[customer].delivered}只）</div></div>`;
+          });
+          html += `<div class="ar-item" style="font-weight:bold;border-top:1px solid #e0e0e0;padding-top:var(--spacing-sm);margin-top:var(--spacing-sm);">今日总需制作：<span class="ar-amount">${totalQty}只</span></div>`;
+
+          container.innerHTML = html;
+        })
+        .catch(err => {
+          console.error('Render today orders failed:', err);
+          container.innerHTML = '<p>加载失败</p>';
+        });
+    }
+
+    // === v3: Init Date Pickers ===
+    function initDatePickers() {
+      const today = new Date();
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+      const fmt = d => d.toISOString().split('T')[0];
+      const startEl = document.getElementById('date-start');
+      const endEl = document.getElementById('date-end');
+      if (startEl) startEl.value = fmt(firstDay);
+      if (endEl) endEl.value = fmt(today);
+    }
+
+    // === v3: Load Customer Filter ===
+    async function loadCustomerFilter() {
+      try {
+        const { data, error } = await supabase
+          .from('customers')
+          .select('id, name')
+          .order('name', { ascending: true });
+
+        if (error) throw error;
+
+        const select = document.getElementById('customer-filter');
+        if (!select) return;
+        select.innerHTML = '<option value="all">全部客户</option>';
+        data.forEach(customer => {
+          const option = document.createElement('option');
+          option.value = customer.id;
+          option.textContent = customer.name;
+          select.appendChild(option);
+        });
+      } catch (error) {
+        console.error('Load customers filter failed:', error);
+      }
     }
 
     // === Init ===
@@ -768,38 +945,37 @@
         await loadCustomers();
       }
 
-      // Load AR
+      // Init date pickers & customer filter (v3)
+      initDatePickers();
       if (supabase) {
-        await loadAccountsReceivable();
+        await loadCustomerFilter();
+        renderTodayOrders();
       }
 
       // Event listeners
       document.getElementById('record-btn').addEventListener('click', recordBill);
       document.getElementById('add-customer').addEventListener('click', addCustomer);
-      document.getElementById('export-excel').addEventListener('click', async () => {
+      document.getElementById('load-ar').addEventListener('click', loadAccountsReceivable);
+
+      // Production screenshot
+      document.getElementById('screenshot-production').addEventListener('click', async function() {
+        const element = document.getElementById('today-orders');
+        if (!element) return;
         try {
-          const { data, error } = await supabase
-            .rpc('get_accounts_receivable');
-
-          if (error) throw error;
-
-          if (data.length === 0) {
-            showToast('⚠️ 暂无欠款数据，无法导出', 'warning');
-            return;
-          }
-
-          // Format for Excel
-          const excelData = data.map(row => ({
-            '客户名': row.name,
-            '欠款金额': `¥${row.ar.toFixed(2)}`,
-            '最后交易日期': row.last_date,
-            '状态': '赊账'
-          }));
-
-          exportToExcel(excelData);
+          this.style.display = 'none';
+          const canvas = await domtoimage.toPng(element, { bgcolor: '#ffffff', quality: 1.0 });
+          const link = document.createElement('a');
+          const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+          link.download = `烤鸭生产单-${today}.png`;
+          link.href = canvas;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
         } catch (error) {
-          console.error('Export failed:', error);
-          showToast(`❌ 导出失败：${error.message}`, 'error');
+          console.error('Screenshot failed:', error);
+          showToast('❌ 截图失败，请重试', 'error');
+        } finally {
+          this.style.display = 'block';
         }
       });
 

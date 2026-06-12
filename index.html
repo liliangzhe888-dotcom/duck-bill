@@ -7,7 +7,6 @@
   <title>烤鸭送货记账 — 云端版</title>
   <style>
     :root {
-      --base-font-size: 16px;
       --spacing-xs: 0.25rem;
       --spacing-sm: 0.5rem;
       --spacing-md: 1rem;
@@ -529,7 +528,7 @@
       const hash = window.location.hash.substring(1);
       if (hash.startsWith('tab-')) {
         const tabId = hash.substring(4);
-        if (['bill', 'ar', 'customers'].includes(tabId)) {
+        if (['bill', 'ar', 'customers', 'production'].includes(tabId)) {
           showTab(tabId);
         }
       } else {
@@ -701,8 +700,15 @@
     }
 
     async function addCustomer() {
+      const addBtn = document.getElementById('add-customer');
       const nameInput = document.getElementById('customer-name');
       const priceInput = document.getElementById('customer-price');
+
+      // Disable button and show loading state
+      if (addBtn) {
+        addBtn.disabled = true;
+        addBtn.textContent = '⏳ 添加中...';
+      }
 
       const name = nameInput.value.trim();
       const price = parseFloat(priceInput.value);
@@ -732,22 +738,30 @@
       } catch (error) {
         console.error('Add customer failed:', error);
         showToast(`❌ 添加失败：${error.message}`, 'error');
+      } finally {
+        // Re-enable button
+        if (addBtn) {
+          addBtn.disabled = false;
+          addBtn.textContent = '➕ 添加客户';
+        }
       }
     }
 
 
-  // === Fix 1: Auto-sync delivered_qty with ordered_qty ===
-  document.getElementById('ordered-qty-bill').addEventListener('input', function() {
-    const ordered = parseInt(this.value) || 0;
-    document.getElementById('delivered-qty-bill').value = ordered;
-  });
 
   // === Fix 2: Safe bill record logic ===
   async function recordBill() {
+    const recordBtn = document.getElementById('record-btn');
     const customerInput = document.getElementById('customer-bill');
     const orderedQtyInput = document.getElementById('ordered-qty-bill');
     const deliveredQtyInput = document.getElementById('delivered-qty-bill');
     const paidSelect = document.getElementById('paid-bill');
+
+    // Disable button and show loading state
+    if (recordBtn) {
+      recordBtn.disabled = true;
+      recordBtn.textContent = '⏳ 记录中...';
+    }
 
     const customerName = customerInput.value.trim();
     const orderedQty = parseInt(orderedQtyInput.value) || 0;
@@ -808,6 +822,12 @@
     } catch (error) {
       console.error('Record bill failed:', error);
       showToast(`❌ 记录失败：${error.message}`, 'error');
+    } finally {
+      // Re-enable button
+      if (recordBtn) {
+        recordBtn.disabled = false;
+        recordBtn.textContent = '✅ 记录本单';
+      }
     }
   }
 
@@ -823,7 +843,13 @@
 
   // === Fix 3: Safe today orders rendering ===
   async function renderTodayOrders() {
+    const todayOrdersEl = document.getElementById('today-orders');
     const today = new Date().toISOString().split('T')[0];
+
+    // Show loading state
+    if (todayOrdersEl) {
+      todayOrdersEl.innerHTML = '<p>⏳ 加载中...</p>';
+    }
 
     try {
       const { data, error } = await supabase
@@ -881,9 +907,22 @@
 
   // === Fix 4: Safe AR query (handle missing fields) ===
   async function loadAccountsReceivable() {
+    const loadArBtn = document.getElementById('load-ar');
+    const arListEl = document.getElementById('ar-list');
     const startDate = document.getElementById('date-start').value || '';
     const endDate = document.getElementById('date-end').value || '';
     const customerFilter = document.getElementById('customer-filter').value;
+
+    // Disable button and show loading state
+    if (loadArBtn) {
+      loadArBtn.disabled = true;
+      loadArBtn.textContent = '⏳ 查询中...';
+    }
+
+    // Show loading state
+    if (arListEl) {
+      arListEl.innerHTML = '<p>⏳ 加载中...</p>';
+    }
 
     if (!startDate || !endDate) {
       showToast('⚠️ 请先选择开始和结束日期', 'warning');
@@ -952,6 +991,12 @@
     } catch (error) {
       console.error('Load AR failed:', error);
       showToast(`❌ 查询失败：${error.message}`, 'error');
+    } finally {
+      // Re-enable button
+      if (loadArBtn) {
+        loadArBtn.disabled = false;
+        loadArBtn.textContent = '🔍 查询账单';
+      }
     }
   }
 
@@ -1092,9 +1137,14 @@
           showCustomerSuggestions(this.value);
         }
       });
+      // Add missing event listeners
+      document.getElementById('add-customer').addEventListener('click', addCustomer);
+      document.getElementById('screenshot-production').addEventListener('click', () => {
+        alert('功能开发中');
+      });
     }
   });
 </script>
-  <div style="text-align:center;color:#999;font-size:12px;padding:10px;">© 2026 烤鸭记账 v1.0</div>
+  <footer style="text-align:center;color:#999;font-size:0.75rem;padding:var(--spacing-sm);margin-top:0;">© 2026 烤鸭记账 v1.0</footer>
 </body>
 </html>

@@ -314,6 +314,41 @@
       animation: toastSlideOut 0.3s ease-in forwards;
     }
 
+    /* Customer Suggestions Dropdown */
+    .customer-suggestions {
+      position: absolute;
+      background: white;
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 100;
+      width: 100%;
+      margin-top: 4px;
+      display: none;
+      font-size: var(--font-size-base);
+    }
+
+    .customer-suggestions.active {
+      display: block;
+    }
+
+    .customer-suggestion-item {
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .customer-suggestion-item:last-child {
+      border-bottom: none;
+    }
+
+    .customer-suggestion-item:hover {
+      background-color: #f5f5f5;
+    }
+
     @media (max-width: 480px) {
       body {
         padding: 0;
@@ -356,8 +391,8 @@
       <section id="tab-bill" class="tab-content active">
         <div class="form-group">
           <label for="customer-bill">客户姓名</label>
-          <input type="text" id="customer-bill" list="customers-bill" placeholder="输入客户名（支持拼音首字检索）" autocomplete="off">
-          <datalist id="customers-bill"></datalist>
+          <input type="text" id="customer-bill" placeholder="输入客户名（支持拼音首字检索）" autocomplete="off">
+          <div id="customer-suggestions" class="customer-suggestions"></div>
         </div>
 
         <div class="form-group">
@@ -973,12 +1008,13 @@
     // 5. 渲染今日订单
     renderTodayOrders();
 
-    // 6. 客户名自动补全功能
+    // 6. 客户名自动补全功能 - Custom Dropdown Implementation
     const customerInput = document.getElementById('customer-bill');
-    const customersDatalist = document.getElementById('customers-bill');
+    const suggestionsContainer = document.getElementById('customer-suggestions');
+    let allCustomers = [];
 
-    // 加载客户姓名列表并填充到datalist
-    async function loadCustomerNames() {
+    // Load all customer names into client-side array on page load
+    async function loadAllCustomers() {
       if (!supabase) return;
 
       try {
@@ -989,67 +1025,72 @@
 
         if (error) throw error;
 
-        // 清空现有选项
-        customersDatalist.innerHTML = '';
-
-        // 添加所有客户名称
-        data.forEach(customer => {
-          const option = document.createElement('option');
-          option.value = customer.name;
-          customersDatalist.appendChild(option);
-        });
+        // Store all customer names in array for client-side filtering
+        allCustomers = data.map(customer => customer.name);
       } catch (error) {
         console.error('加载客户名称失败:', error);
       }
     }
 
-    // 实时筛选并更新datalist with debounce
-    let filterTimeout;
-    function filterAndPopulateDatalist(searchTerm) {
-      if (!supabase || !searchTerm.trim()) {
-        // 如果搜索词为空，显示所有客户
-        loadCustomerNames();
+    // Client-side filtering and display suggestions
+    function showCustomerSuggestions(searchTerm) {
+      if (!searchTerm.trim()) {
+        suggestionsContainer.classList.remove('active');
         return;
       }
 
-      // Clear previous timeout
-      clearTimeout(filterTimeout);
+      // Filter customers client-side using includes (case-insensitive)
+      const filteredCustomers = allCustomers.filter(customer =>
+        customer.toLowerCase().includes(searchTerm.toLowerCase())
+      ).slice(0, 10); // Limit to top 10 matches
 
-      // Set new timeout for 300ms
-      filterTimeout = setTimeout(() => {
-        try {
-          // 使用 Supabase v2 语法：select('name').ilike('name', '%搜索词%').limit(10)
-          supabase
-            .from('customers')
-            .select('name')
-            .ilike('name', `%${searchTerm}%`)
-            .limit(10)
-            .then(({ data, error }) => {
-              if (error) throw error;
+      // Clear existing suggestions
+      suggestionsContainer.innerHTML = '';
 
-              // 清空现有选项
-              customersDatalist.innerHTML = '';
+      if (filteredCustomers.length === 0) {
+        suggestionsContainer.classList.remove('active');
+        return;
+      }
 
-              // 添加筛选后的客户名称
-              data.forEach(customer => {
-                const option = document.createElement('option');
-                option.value = customer.name;
-                customersDatalist.appendChild(option);
-              });
-            });
-        } catch (error) {
-          console.error('筛选客户名称失败:', error);
-        }
-      }, 300);
+      // Add filtered customers as suggestion items
+      filteredCustomers.forEach(customer => {
+        const item = document.createElement('div');
+        item.className = 'customer-suggestion-item';
+        item.textContent = customer;
+        item.addEventListener('click', () => {
+          customerInput.value = customer;
+          suggestionsContainer.classList.remove('active');
+          customerInput.focus();
+        });
+        suggestionsContainer.appendChild(item);
+      });
+
+      suggestionsContainer.classList.add('active');
     }
 
-    // 页面加载后初始化客户名称列表
-    await loadCustomerNames();
+    // Page load initialization
+    await loadAllCustomers();
 
-    // 监听输入框的input事件
-    if (customerInput && customersDatalist) {
+    // Event listeners for customer input
+    if (customerInput && suggestionsContainer) {
+      // Show suggestions when typing
       customerInput.addEventListener('input', function() {
-        filterAndPopulateDatalist(this.value);
+        showCustomerSuggestions(this.value);
+      });
+
+      // Hide suggestions when input loses focus
+      customerInput.addEventListener('blur', function() {
+        // Small delay to allow click event on suggestions to fire first
+        setTimeout(() => {
+          suggestionsContainer.classList.remove('active');
+        }, 150);
+      });
+
+      // Show suggestions when input gains focus and has content
+      customerInput.addEventListener('focus', function() {
+        if (this.value.trim()) {
+          showCustomerSuggestions(this.value);
+        }
       });
     }
   });

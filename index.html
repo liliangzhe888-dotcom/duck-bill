@@ -801,7 +801,7 @@
         .insert([
           {
             customer_id: customer.id,
-            ordered_qty: orderedQty,
+            qty: orderedQty,
             delivered_qty: deliveredQty,
             amount,
             paid,
@@ -854,7 +854,7 @@
     try {
       const { data, error } = await supabase
         .from('bills')
-        .select('id, date, ordered_qty, delivered_qty, amount, paid, customer_id, customers!inner(name)')
+        .select('id, date, qty, delivered_qty, amount, paid, customer_id, customers!inner(name)')
         .eq('date', today)
         .order('id', { ascending: true });
 
@@ -871,8 +871,8 @@
 
       data.forEach(bill => {
         // Safe access: use ordered_qty, fallback to qty if missing
-        const ordered = bill.ordered_qty !== undefined ? bill.ordered_qty : (bill.qty || 0);
-        const delivered = bill.delivered_qty !== undefined ? bill.delivered_qty : (bill.qty || 0);
+        const ordered = bill.qty !== undefined ? bill.qty : 0;
+        const delivered = bill.delivered_qty !== undefined ? bill.delivered_qty : 0;
 
         if (!orders[bill.customers?.name]) {
           orders[bill.customers?.name] = { ordered: 0, delivered: 0 };
@@ -956,8 +956,8 @@
       const grouped = {};
       data.forEach(row => {
         // Safe access: fallback to row.qty if ordered_qty missing
-        const ordered = row.ordered_qty !== undefined ? row.ordered_qty : (row.qty || 0);
-        const delivered = row.delivered_qty !== undefined ? row.delivered_qty : (row.qty || 0);
+        const ordered = row.qty !== undefined ? row.qty : 0;
+        const delivered = row.delivered_qty !== undefined ? row.delivered_qty : 0;
 
         if (!grouped[row.customers?.name]) {
           grouped[row.customers?.name] = { ordered: 0, delivered: 0, amount: 0, paid: 0, unpaid: 0 };

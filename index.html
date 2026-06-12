@@ -1066,10 +1066,53 @@
   document.getElementById('record-btn').addEventListener('click', recordBill);
   document.getElementById('load-ar').addEventListener('click', loadAccountsReceivable);
 
+  // === Init Date Pickers (for the AR query tab) ===
+  function initDatePickers() {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    document.getElementById('date-start').value = firstDay.toISOString().split('T')[0];
+    document.getElementById('date-end').value = today.toISOString().split('T')[0];
+  }
+
+  // === Load Customers for Filter (for the AR query tab) ===
+  async function loadCustomerFilter() {
+    try {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id, name')
+        .order('name', { ascending: true });
+      if (error) throw error;
+      const select = document.getElementById('customer-filter');
+      if (!select) return;
+      select.innerHTML = '<option value="all">全部客户</option>';
+      data.forEach(customer => {
+        const option = document.createElement('option');
+        option.value = customer.id;
+        option.textContent = customer.name;
+        select.appendChild(option);
+      });
+    } catch (error) {
+      console.error('Load customers filter failed:', error);
+    }
+  }
+
   // === On DOMContentLoaded ===
   document.addEventListener('DOMContentLoaded', () => {
+    // 1. 初始化 Supabase
+    initSupabase();
+
+    // 2. 检查登录状态（替换"加载中..."）
+    updateAuthStatus();
+
+    // 3. 初始化日期选择器
     initDatePickers();
+
+    // 4. 加载客户列表
     loadCustomerFilter();
+    loadCustomers();
+
+    // 5. 渲染今日订单
     renderTodayOrders();
   });
 </body>

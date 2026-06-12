@@ -1,0 +1,288 @@
+<!-- 🦆 烤鸭送货记账 v3 升级补丁 -->
+<!-- 新增功能：今日生产单看板 + 实做数编辑 + 小票图生成 -->
+
+<!-- === 修改点说明 === -->
+<!-- 1. 记账页：新增 '实做数' 输入框，默认=订货数 -->
+<!-- 2. 新增 #today-orders 区域：显示今日每家明细+总数 -->
+<!-- 3. 新增 '📸 生成今日生产单' 按钮，截图 #today-orders -->
+<!-- 4. 查账页：升级为日期范围+客户筛选 -->
+
+<!-- === 使用方式 === -->
+<!-- 将此 patch 中的 HTML/JS 替换到原 index.html 对应位置即可 -->
+
+<!-- 🔹 Step 1: 替换记账表单（原 #tab-bill 内容） -->
+<section id="tab-bill" class="tab-content active">
+  <div class="form-group">
+    <label for="customer-bill">客户姓名</label>
+    <input type="text" id="customer-bill" list="customers-bill" placeholder="输入客户名（支持拼音首字检索）" autocomplete="off">
+    <datalist id="customers-bill"></datalist>
+  </div>
+
+  <div class="form-group">
+    <label for="ordered-qty-bill">订货数量（只）</label>
+    <input type="number" id="ordered-qty-bill" min="1" value="1" step="1">
+  </div>
+
+  <div class="form-group">
+    <label for="delivered-qty-bill">实做数量（只）<br><small style="color:#666;font-size:0.875rem;">（可修改，如回扣、临时加减）</small></label>
+    <input type="number" id="delivered-qty-bill" min="0" value="1" step="1">
+  </div>
+
+  <div class="form-group">
+    <label for="paid-bill">结算状态</label>
+    <select id="paid-bill">
+      <option value="false">未结</option>
+      <option value="true">已结</option>
+    </select>
+  </div>
+
+  <button id="record-btn" class="btn-block">✅ 记录本单</button>
+</section>
+
+<!-- 🔹 Step 2: 新增今日生产单看板（插入在 #tab-bill 后） -->
+<section id="tab-production" class="tab-content">
+  <h2 class="ar-title">今日生产单</h2>
+  <div id="today-orders">
+    <p>暂无今日订单</p>
+  </div>
+  <button id="screenshot-production" class="btn-block export-btn">📸 生成今日生产单（可转发给师傅）</button>
+  <p style="font-size:0.875rem;color:#666;margin-top:var(--spacing-md);">📝 此单据可随时更新，请以最新截图为准</p>
+</section>
+
+<!-- 🔹 Step 3: 更新查账页为查账页（原 #tab-ar） -->
+<section id="tab-ar" class="tab-content">
+  <div class="form-group">
+    <label for="date-start">开始日期</label>
+    <input type="date" id="date-start">
+  </div>
+
+  <div class="form-group">
+    <label for="date-end">结束日期</label>
+    <input type="date" id="date-end">
+  </div>
+
+  <div class="form-group">
+    <label for="customer-filter">客户筛选</label>
+    <select id="customer-filter">
+      <option value="all">全部客户</option>
+      <!-- populated by JS -->
+    </select>
+  </div>
+
+  <button id="load-ar" class="btn-block">🔍 查询账单</button>
+
+  <h3 class="ar-title" style="margin-top: var(--spacing-lg);">账单明细</h3>
+  <div id="ar-list">
+    <p>请先设置日期范围并点击「查询账单」</p>
+  </div>
+</section>
+
+<!-- 🔹 Step 4: 新增 JS 逻辑（插入在 </script> 前） -->
+<script>
+  // === Today Orders Rendering ===
+  function renderTodayOrders() {
+    const today = new Date().toISOString().split('T')[0];
+    const bills = getBills().filter(bill => bill.date === today);
+
+    if (bills.length === 0) {
+      document.getElementById('today-orders').innerHTML = '<p>暂无今日订单</p>';
+      return;
+    }
+
+    // Group by customer
+    const orders = {};
+    let totalQty = 0;
+
+    bills.forEach(bill => {
+      if (!orders[bill.customer]) {
+        orders[bill.customer] = { ordered: 0, delivered: 0 };
+      }
+      orders[bill.customer].ordered += bill.ordered_qty || bill.qty;
+      orders[bill.customer].delivered += bill.delivered_qty || bill.qty;
+      totalQty += bill.ordered_qty || bill.qty;
+    });
+
+    // Generate HTML
+    let html = `<h3 style="margin-top:0;margin-bottom:var(--spacing-sm);font-size:1.125rem;">烤鸭生产单 · ${formatDateWithWeekday(new Date())}</h3>`;
+
+    Object.keys(orders).forEach(customer => {
+      const order = orders[customer];
+      html += `<div class="ar-item">
+        ${customer} × ${order.ordered}只
+        <div style="font-size:0.875rem;color:#666;margin-top:4px;">（实做：${order.delivered}只）</div>
+      </div>`;
+    });
+
+    html += `<div class="ar-item" style="font-weight:bold;border-top:1px solid #e0e0e0;padding-top:var(--spacing-sm);margin-top:var(--spacing-sm);">
+      今日总需制作：<span class="ar-amount">${totalQty}只</span>
+    </div>`;
+
+    document.getElementById('today-orders').innerHTML = html;
+  }
+
+  // === Format date with weekday ===
+  function formatDateWithWeekday(date) {
+    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const weekday = weekdays[date.getDay()];
+    return `${year}-${month}-${day} ${weekday}`;
+  }
+
+  // === Production Screenshot ===
+  document.getElementById('screenshot-production').addEventListener('click', async function() {
+    const element = document.getElementById('today-orders');
+    if (!element) return;
+
+    try {
+      this.style.display = 'none';
+
+      const canvas = await domtoimage.toPng(element, {
+        bgcolor: '#ffffff',
+        quality: 1.0,
+        style: {
+          'font-family': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+        }
+      });
+
+      const link = document.createElement('a');
+      const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+      link.download = `烤鸭生产单-${today}.png`;
+      link.href = canvas;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+    } catch (error) {
+      console.error('Screenshot failed:', error);
+      showToast('❌ 截图失败，请重试', 'error');
+    } finally {
+      this.style.display = 'block';
+    }
+  });
+
+  // === AR Query Logic ===
+  async function loadAccountsReceivable() {
+    const startDate = document.getElementById('date-start').value || '';
+    const endDate = document.getElementById('date-end').value || '';
+    const customerFilter = document.getElementById('customer-filter').value;
+
+    if (!startDate || !endDate) {
+      showToast('⚠️ 请先选择开始和结束日期', 'warning');
+      return;
+    }
+
+    try {
+      let query = supabase
+        .from('bills')
+        .select(`
+          bills.id,
+          bills.date,
+          bills.ordered_qty,
+          bills.delivered_qty,
+          bills.amount,
+          bills.paid,
+          customers.name
+        `)
+        .join('customers', 'bills.customer_id', 'customers.id')
+        .gte('bills.date', startDate)
+        .lte('bills.date', endDate);
+
+      if (customerFilter !== 'all') {
+        query = query.eq('customers.id', customerFilter);
+      }
+
+      const { data, error } = await query.order('bills.date', { ascending: true });
+
+      if (error) throw error;
+
+      const arList = document.getElementById('ar-list');
+      arList.innerHTML = '';
+
+      if (data.length === 0) {
+        arList.innerHTML = '<p>未找到符合条件的账单</p>';
+        return;
+      }
+
+      // Group by customer
+      const grouped = {};
+      data.forEach(row => {
+        if (!grouped[row.name]) {
+          grouped[row.name] = { ordered: 0, delivered: 0, amount: 0, paid: 0, unpaid: 0 };
+        }
+        grouped[row.name].ordered += row.ordered_qty || row.qty;
+        grouped[row.name].delivered += row.delivered_qty || row.qty;
+        grouped[row.name].amount += row.amount;
+        if (row.paid) {
+          grouped[row.name].paid += row.amount;
+        } else {
+          grouped[row.name].unpaid += row.amount;
+        }
+      });
+
+      // Render
+      Object.keys(grouped).forEach(name => {
+        const g = grouped[name];
+        const item = document.createElement('div');
+        item.className = 'ar-item';
+        item.innerHTML = `
+          <strong>${name}</strong>
+          <div style="margin-top:4px;font-size:0.875rem;">
+            订货：${g.ordered}只｜实做：${g.delivered}只｜金额：¥${g.amount.toFixed(2)}
+          </div>
+          <div style="margin-top:4px;font-size:0.875rem;">
+            已结：¥${g.paid.toFixed(2)}｜未结：¥${g.unpaid.toFixed(2)}
+          </div>
+        `;
+        arList.appendChild(item);
+      });
+    } catch (error) {
+      console.error('Load AR failed:', error);
+      showToast(`❌ 查询失败：${error.message}`, 'error');
+    }
+  }
+
+  // === Init Date Pickers ===
+  function initDatePickers() {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    document.getElementById('date-start').value = firstDay.toISOString().split('T')[0];
+    document.getElementById('date-end').value = today.toISOString().split('T')[0];
+  }
+
+  // === Load Customers for Filter ===
+  async function loadCustomerFilter() {
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id, name')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+
+      const select = document.getElementById('customer-filter');
+      select.innerHTML = '<option value="all">全部客户</option>';
+
+      data.forEach(customer => {
+        const option = document.createElement('option');
+        option.value = customer.id;
+        option.textContent = customer.name;
+        select.appendChild(option);
+      });
+    } catch (error) {
+      console.error('Load customers filter failed:', error);
+    }
+  }
+
+  // === Event Listeners ===
+  document.getElementById('load-ar').addEventListener('click', loadAccountsReceivable);
+
+  // === On DOMContentLoaded ===
+  document.addEventListener('DOMContentLoaded', () => {
+    initDatePickers();
+    loadCustomerFilter();
+    renderTodayOrders();
+  });
+</script>

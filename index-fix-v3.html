@@ -1,0 +1,223 @@
+<!-- 🦆 烤鸭送货记账 v3 修复版 -->
+<!-- 修复：① 实做数量自动同步订货数量 ② 记录按钮报错 -->
+
+<!-- === 使用方式 === -->
+<!-- 替换原 index.html 中的 JS 部分（从 // === Today Orders Rendering === 开始）即可 -->
+
+<script>
+  // === Fix 1: Auto-sync delivered_qty with ordered_qty ===
+  document.getElementById('ordered-qty-bill').addEventListener('input', function() {
+    const ordered = parseInt(this.value) || 0;
+    document.getElementById('delivered-qty-bill').value = ordered;
+  });
+
+  // === Fix 2: Safe bill record logic ===
+  async function recordBill() {
+    const customerInput = document.getElementById('customer-bill');
+    const orderedQtyInput = document.getElementById('ordered-qty-bill');
+    const deliveredQtyInput = document.getElementById('delivered-qty-bill');
+    const paidSelect = document.getElementById('paid-bill');
+
+    const customerName = customerInput.value.trim();
+    const orderedQty = parseInt(orderedQtyInput.value) || 0;
+    const deliveredQty = parseInt(deliveredQtyInput.value) || 0;
+    const paid = paidSelect.value === 'true';
+
+    if (!customerName) {
+      showToast('⚠️ 请填写客户姓名', 'warning');
+      return;
+    }
+
+    if (orderedQty <= 0) {
+      showToast('⚠️ 订货数量必须大于 0', 'warning');
+      return;
+    }
+
+    try {
+      // Get customer ID
+      const { data: customers, error: customerError } = await supabase
+        .from('customers')
+        .select('id, price')
+        .eq('name', customerName)
+        .limit(1);
+
+      if (customerError) throw customerError;
+      if (customers.length === 0) {
+        showToast('⚠️ 客户未找到，请先在【客户管理】页面添加', 'warning');
+        return;
+      }
+
+      const customer = customers[0];
+      const amount = customer.price * orderedQty;
+      const date = new Date().toISOString().split('T')[0];
+
+      const { error: billError } = await supabase
+        .from('bills')
+        .insert([
+          {
+            customer_id: customer.id,
+            ordered_qty: orderedQty,
+            delivered_qty: deliveredQty,
+            amount,
+            paid,
+            date
+          }
+        ]);
+
+      if (billError) throw billError;
+
+      showToast('✅ 记录成功！', 'success');
+      customerInput.value = '';
+      orderedQtyInput.value = '1';
+      deliveredQtyInput.value = '1';
+      paidSelect.value = 'false';
+
+      // Refresh today's orders
+      renderTodayOrders();
+    } catch (error) {
+      console.error('Record bill failed:', error);
+      showToast(`❌ 记录失败：${error.message}`, 'error');
+    }
+  }
+
+  // === Fix 3: Safe today orders rendering ===
+  function renderTodayOrders() {
+    const today = new Date().toISOString().split('T')[0];
+    const bills = getBills().filter(bill => bill.date === today);
+
+    if (bills.length === 0) {
+      document.getElementById('today-orders').innerHTML = '<p>暂无今日订单</p>';
+      return;
+    }
+
+    // Group by customer
+    const orders = {};
+    let totalOrdered = 0;
+
+    bills.forEach(bill => {
+      // Safe access: use ordered_qty, fallback to qty if missing
+      const ordered = bill.ordered_qty !== undefined ? bill.ordered_qty : (bill.qty || 0);
+      const delivered = bill.delivered_qty !== undefined ? bill.delivered_qty : (bill.qty || 0);
+
+      if (!orders[bill.customer]) {
+        orders[bill.customer] = { ordered: 0, delivered: 0 };
+      }
+      orders[bill.customer].ordered += ordered;
+      orders[bill.customer].delivered += delivered;
+      totalOrdered += ordered;
+    });
+
+    // Generate HTML
+    let html = `<h3 style="margin-top:0;margin-bottom:var(--spacing-sm);font-size:1.125rem;">烤鸭生产单 · ${formatDateWithWeekday(new Date())}</h3>`;
+
+    Object.keys(orders).forEach(customer => {
+      const order = orders[customer];
+      html += `<div class="ar-item">
+        ${customer} × ${order.ordered}只
+        <div style="font-size:0.875rem;color:#666;margin-top:4px;">（实做：${order.delivered}只）</div>
+      </div>`;
+    });
+
+    html += `<div class="ar-item" style="font-weight:bold;border-top:1px solid #e0e0e0;padding-top:var(--spacing-sm);margin-top:var(--spacing-sm);">
+      今日总需制作：<span class="ar-amount">${totalOrdered}只</span>
+    </div>`;
+
+    document.getElementById('today-orders').innerHTML = html;
+  }
+
+  // === Fix 4: Safe AR query (handle missing fields) ===
+  async function loadAccountsReceivable() {
+    const startDate = document.getElementById('date-start').value || '';
+    const endDate = document.getElementById('date-end').value || '';
+    const customerFilter = document.getElementById('customer-filter').value;
+
+    if (!startDate || !endDate) {
+      showToast('⚠️ 请先选择开始和结束日期', 'warning');
+      return;
+    }
+
+    try {
+      let query = supabase
+        .from('bills')
+        .select(`
+          bills.id,
+          bills.date,
+          bills.ordered_qty,
+          bills.delivered_qty,
+          bills.amount,
+          bills.paid,
+          customers.name
+        `)
+        .join('customers', 'bills.customer_id', 'customers.id')
+        .gte('bills.date', startDate)
+        .lte('bills.date', endDate);
+
+      if (customerFilter !== 'all') {
+        query = query.eq('customers.id', customerFilter);
+      }
+
+      const { data, error } = await query.order('bills.date', { ascending: true });
+
+      if (error) throw error;
+
+      const arList = document.getElementById('ar-list');
+      arList.innerHTML = '';
+
+      if (data.length === 0) {
+        arList.innerHTML = '<p>未找到符合条件的账单</p>';
+        return;
+      }
+
+      // Group by customer
+      const grouped = {};
+      data.forEach(row => {
+        // Safe access: fallback to row.qty if ordered_qty missing
+        const ordered = row.ordered_qty !== undefined ? row.ordered_qty : (row.qty || 0);
+        const delivered = row.delivered_qty !== undefined ? row.delivered_qty : (row.qty || 0);
+
+        if (!grouped[row.name]) {
+          grouped[row.name] = { ordered: 0, delivered: 0, amount: 0, paid: 0, unpaid: 0 };
+        }
+        grouped[row.name].ordered += ordered;
+        grouped[row.name].delivered += delivered;
+        grouped[row.name].amount += row.amount;
+        if (row.paid) {
+          grouped[row.name].paid += row.amount;
+        } else {
+          grouped[row.name].unpaid += row.amount;
+        }
+      });
+
+      // Render
+      Object.keys(grouped).forEach(name => {
+        const g = grouped[name];
+        const item = document.createElement('div');
+        item.className = 'ar-item';
+        item.innerHTML = `
+          <strong>${name}</strong>
+          <div style="margin-top:4px;font-size:0.875rem;">
+            订货：${g.ordered}只｜实做：${g.delivered}只｜金额：¥${g.amount.toFixed(2)}
+          </div>
+          <div style="margin-top:4px;font-size:0.875rem;">
+            已结：¥${g.paid.toFixed(2)}｜未结：¥${g.unpaid.toFixed(2)}
+          </div>
+        `;
+        arList.appendChild(item);
+      });
+    } catch (error) {
+      console.error('Load AR failed:', error);
+      showToast(`❌ 查询失败：${error.message}`, 'error');
+    }
+  }
+
+  // === Event Listeners ===
+  document.getElementById('record-btn').addEventListener('click', recordBill);
+  document.getElementById('load-ar').addEventListener('click', loadAccountsReceivable);
+
+  // === On DOMContentLoaded ===
+  document.addEventListener('DOMContentLoaded', () => {
+    initDatePickers();
+    loadCustomerFilter();
+    renderTodayOrders();
+  });
+</script>

@@ -956,7 +956,7 @@
   }
 
   // === On DOMContentLoaded ===
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', async () => {
     // 1. 初始化 Supabase
     initSupabase();
 
@@ -972,6 +972,86 @@
 
     // 5. 渲染今日订单
     renderTodayOrders();
+
+    // 6. 客户名自动补全功能
+    const customerInput = document.getElementById('customer-bill');
+    const customersDatalist = document.getElementById('customers-bill');
+
+    // 加载客户姓名列表并填充到datalist
+    async function loadCustomerNames() {
+      if (!supabase) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('customers')
+          .select('name')
+          .order('name', { ascending: true });
+
+        if (error) throw error;
+
+        // 清空现有选项
+        customersDatalist.innerHTML = '';
+
+        // 添加所有客户名称
+        data.forEach(customer => {
+          const option = document.createElement('option');
+          option.value = customer.name;
+          customersDatalist.appendChild(option);
+        });
+      } catch (error) {
+        console.error('加载客户名称失败:', error);
+      }
+    }
+
+    // 实时筛选并更新datalist with debounce
+    let filterTimeout;
+    function filterAndPopulateDatalist(searchTerm) {
+      if (!supabase || !searchTerm.trim()) {
+        // 如果搜索词为空，显示所有客户
+        loadCustomerNames();
+        return;
+      }
+
+      // Clear previous timeout
+      clearTimeout(filterTimeout);
+
+      // Set new timeout for 300ms
+      filterTimeout = setTimeout(() => {
+        try {
+          // 使用 Supabase v2 语法：select('name').ilike('name', '%搜索词%').limit(10)
+          supabase
+            .from('customers')
+            .select('name')
+            .ilike('name', `%${searchTerm}%`)
+            .limit(10)
+            .then(({ data, error }) => {
+              if (error) throw error;
+
+              // 清空现有选项
+              customersDatalist.innerHTML = '';
+
+              // 添加筛选后的客户名称
+              data.forEach(customer => {
+                const option = document.createElement('option');
+                option.value = customer.name;
+                customersDatalist.appendChild(option);
+              });
+            });
+        } catch (error) {
+          console.error('筛选客户名称失败:', error);
+        }
+      }, 300);
+    }
+
+    // 页面加载后初始化客户名称列表
+    await loadCustomerNames();
+
+    // 监听输入框的input事件
+    if (customerInput && customersDatalist) {
+      customerInput.addEventListener('input', function() {
+        filterAndPopulateDatalist(this.value);
+      });
+    }
   });
 </script>
   <div style="text-align:center;color:#999;font-size:12px;padding:10px;">© 2026 烤鸭记账 v1.0</div>

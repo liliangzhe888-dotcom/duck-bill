@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#2196F3">
+  <title>烤鸭送货记账 — 云端版</title>
+  <style>
+    :root {
+      --base-font-size: 16px;
+      --spacing-xs: 0.25rem;
+      --spacing-sm: 0.5rem;
+      --spacing-md: 1rem;
+      --spacing-lg: 1.5rem;
+      --font-size-base: 1.25rem; /* 20px */
+      --font-size-title: 1.5rem; /* 24px */
+      --btn-height: 3.125rem; /* 50px */
+      --border-radius: 0.5rem;
+      --bg-primary: #ffffff;
+      --text-primary: #000000;
+      --text-secondary: #666;
+      --border-color: #e0e0e0;
+      --success-color: #4CAF50;
+      --warning-color: #FF9800;
+      --danger-color: #f44336;
+      --tab-bg: #f5f5f5;
+      --tab-active: #2196F3;
+      --toast-bg: rgba(0,0,0,0.8);
+      --toast-text: white;
+    }
+
+    * {
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: var(--text-primary);
+      background-color: #f9f9f9;
+      padding: 0;
+      font-size: var(--font-size-base);
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: var(--bg-primary);
+      border-radius: var(--border-radius);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      overflow: hidden;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #2196F3;
+      color: white;
+      padding: var(--spacing-md);
+      text-align: center;
+      position: relative;
+      z-index: 10;
+    }
+
+    h1 {
+      font-size: var(--font-size-title);
+      font-weight: bold;
+      margin: 0;
+    }
+
+    .tabs {
+      display: flex;
+      background: var(--tab-bg);
+      border-bottom: 1px solid var(--border-color);
+      z-index: 5;
+    }
+
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: var(--spacing-sm) 0;
+      font-weight: bold;
+      color: #666;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .tab.active {
+      color: var(--tab-active);
+    }
+
+    .tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 40px;
+      height: 4px;
+      background: var(--tab-active);
+      border-radius: 2px;
+    }
+
+    .tab-content {
+      display: none;
+      padding: var(--spacing-md);
+      background: white;
+    }
+
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .form-group {
+      margin-bottom: var(--spacing-md);
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: var(--spacing-md);
+    }
+
+    label {
+      display: block;
+      margin-bottom: var(--spacing-xs);
+      font-weight: bold;
+      font-size: var(--font-size-base);
+    }
+
+    input, select, button {
+      width: 100%;
+      padding: 0.75rem;
+      font-size: var(--font-size-base);
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      margin-bottom: var(--spacing-sm);
+      background: white;
+    }
+
+    button {
+      height: var(--btn-height);
+      background: #2196F3;
+      color: white;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-top: var(--spacing-sm);
+    }
+
+    button:hover:not(:disabled) {
+      background: #0b7dda;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .btn-block {
+      display: block;
+      width: 100%;
+      margin: var(--spacing-md) 0;
+    }
+
+    .ar-summary {
+      background: #f0f8ff;
+      border-top: 2px solid #2196F3;
+      padding: var(--spacing-md);
+      margin-top: var(--spacing-md);
+    }
+
+    .ar-title {
+      font-size: var(--font-size-title);
+      margin-bottom: var(--spacing-sm);
+      color: #2196F3;
+    }
+
+    .ar-item {
+      padding: var(--spacing-sm) 0;
+      border-bottom: 1px dashed #e0e0e0;
+      font-size: var(--font-size-base);
+    }
+
+    .ar-item:last-child {
+      border-bottom: none;
+    }
+
+    .ar-amount {
+      float: right;
+      font-weight: bold;
+      color: var(--text-primary);
+    }
+
+    .ar-status {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.875rem;
+      margin-left: 0.5rem;
+    }
+
+    .status-ar {
+      background: var(--warning-color);
+      color: white;
+    }
+
+    .export-btn {
+      background: #4CAF50;
+      margin-top: var(--spacing-md);
+    }
+
+    .export-btn:hover:not(:disabled) {
+      background: #388E3C;
+    }
+
+    .customers-list {
+      margin-top: var(--spacing-md);
+    }
+
+    .customer-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--spacing-sm) 0;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .customer-row:last-child {
+      border-bottom: none;
+    }
+
+    .customer-price {
+      font-weight: bold;
+      color: #2196F3;
+    }
+
+    .delete-customer {
+      background: none;
+      border: none;
+      color: var(--danger-color);
+      font-size: 1rem;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    footer {
+      text-align: center;
+      padding: var(--spacing-md);
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      border-top: 1px solid var(--border-color);
+    }
+
+    /* Toast Styles */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      width: 90%;
+      max-width: 400px;
+      pointer-events: none;
+    }
+
+    .toast {
+      position: relative;
+      padding: 12px 20px;
+      border-radius: 8px;
+      color: var(--toast-text);
+      font-weight: 500;
+      margin-bottom: 8px;
+      pointer-events: all;
+      transform: translateZ(0);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      animation: toastSlideIn 0.3s ease-out;
+    }
+
+    .toast-success { background: var(--success-color); }
+    .toast-warning { background: var(--warning-color); }
+    .toast-error { background: var(--danger-color); }
+
+    @keyframes toastSlideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+
+    @keyframes toastSlideOut {
+      from {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+      }
+    }
+
+    .toast.exiting {
+      animation: toastSlideOut 0.3s ease-in forwards;
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 0;
+      }
+      .container {
+        margin: 0;
+        border-radius: 0;
+      }
+      h1 {
+        font-size: 1.375rem;
+      }
+      input, select, button {
+        padding: 0.625rem;
+      }
+      .btn-block {
+        margin: var(--spacing-sm) 0;
+      }
+      .tabs {
+        font-size: 0.875rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🦆 烤鸭送货记账</h1>
+      <p id="auth-status">加载中...</p>
+    </header>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="bill">📝 记账</div>
+      <div class="tab" data-tab="ar">💰 查欠款</div>
+      <div class="tab" data-tab="customers">👥 客户管理</div>
+    </div>
+
+    <main>
+      <!-- Tab: 记账 -->
+      <section id="tab-bill" class="tab-content active">
+        <div class="form-group">
+          <label for="customer-bill">客户姓名</label>
+          <input type="text" id="customer-bill" list="customers-bill" placeholder="输入客户名（支持拼音首字检索）" autocomplete="off">
+          <datalist id="customers-bill"></datalist>
+        </div>
+
+        <div class="form-group">
+          <label for="qty-bill">数量（只）</label>
+          <input type="number" id="qty-bill" min="1" value="1" step="1">
+        </div>
+
+        <div class="form-group">
+          <label for="paid-bill">付款状态</label>
+          <select id="paid-bill">
+            <option value="false">赊账</option>
+            <option value="true">已付</option>
+          </select>
+        </div>
+
+        <button id="record-btn" class="btn-block">✅ 记录本单</button>
+      </section>
+
+      <!-- Tab: 查欠款 -->
+      <section id="tab-ar" class="tab-content">
+        <h2 class="ar-title">谁还欠钱？</h2>
+        <div id="ar-list">
+          <p>暂无欠款记录</p>
+        </div>
+        <button id="export-excel" class="btn-block export-btn">📥 导出为 Excel (.xlsx)</button>
+      </section>
+
+      <!-- Tab: 客户管理 -->
+      <section id="tab-customers" class="tab-content">
+        <div class="form-group">
+          <label for="customer-name">客户姓名</label>
+          <input type="text" id="customer-name" placeholder="例如：张三">
+        </div>
+
+        <div class="form-group">
+          <label for="customer-price">单价（¥）</label>
+          <input type="number" id="customer-price" min="1" step="0.01" value="68.00">
+        </div>
+
+        <button id="add-customer" class="btn-block">➕ 添加客户</button>
+
+        <h3 class="ar-title" style="margin-top: var(--spacing-lg);">已添加客户</h3>
+        <div id="customers-list" class="customers-list">
+          <!-- populated by JS -->
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>数据云端存储 · Supabase 免费版 · 安全可靠</p>
+      <p><a href="https://supabase.com" target="_blank">Supabase 项目</a></p>
+    </footer>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Supabase CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/dist/main/index.js"></script>
+  <!-- SheetJS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.min.js"></script>
+
+  <script>
+    // === Toast System (3KB inline) ===
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.textContent = message;
+
+      container.appendChild(toast);
+
+      // Auto remove after 3 seconds
+      setTimeout(() => {
+        toast.classList.add('exiting');
+        setTimeout(() => {
+          if (toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+          }
+        }, 300);
+      }, 3000);
+    }
+
+    // === Tab Navigation ===
+    function showTab(tabId) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(el => {
+        el.classList.remove('active');
+      });
+      document.querySelectorAll('.tab').forEach(el => {
+        el.classList.remove('active');
+      });
+
+      // Show selected tab
+      document.getElementById(`tab-${tabId}`).classList.add('active');
+      document.querySelector(`.tab[data-tab="${tabId}"]`).classList.add('active');
+
+      // Update hash
+      history.replaceState(null, '', `#tab-${tabId}`);
+    }
+
+    // Initialize tab from hash
+    function initTabFromHash() {
+      const hash = window.location.hash.substring(1);
+      if (hash.startsWith('tab-')) {
+        const tabId = hash.substring(4);
+        if (['bill', 'ar', 'customers'].includes(tabId)) {
+          showTab(tabId);
+        }
+      } else {
+        showTab('bill');
+      }
+    }
+
+    // Listen for hash changes
+    window.addEventListener('hashchange', initTabFromHash);
+
+    // Tab click handlers
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabId = tab.getAttribute('data-tab');
+        showTab(tabId);
+      });
+    });
+
+    // === Supabase Client ===
+    let supabase;
+    const SUPABASE_URL = 'https://your-project.supabase.co'; // Replace with your URL
+    const SUPABASE_ANON_KEY = 'your-anon-key'; // Replace with your anon key
+
+    function initSupabase() {
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY || SUPABASE_URL === 'https://your-project.supabase.co') {
+        showToast('⚠️ 请先配置 Supabase：在 README.md 中设置您的项目 URL 和 Anon Key', 'warning');
+        return null;
+      }
+
+      try {
+        supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        return supabase;
+      } catch (error) {
+        console.error('Supabase init failed:', error);
+        showToast('❌ Supabase 初始化失败，请检查配置', 'error');
+        return null;
+      }
+    }
+
+    // === Auth Status ===
+    async function updateAuthStatus() {
+      const authStatusEl = document.getElementById('auth-status');
+
+      if (!supabase) {
+        authStatusEl.textContent = '未配置 Supabase';
+        authStatusEl.style.color = '#f44336';
+        return;
+      }
+
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        if (session) {
+          authStatusEl.textContent = `✅ 已登录：${session.user.email || '用户'}`;
+          authStatusEl.style.color = '#4CAF50';
+        } else {
+          authStatusEl.innerHTML = `⚠️ 未登录 <button id="login-btn" style="margin-left:8px;padding:4px 12px;background:#2196F3;color:white;border:none;border-radius:4px;font-size:0.875rem;">登录</button>`;
+          authStatusEl.style.color = '#FF9800';
+
+          document.getElementById('login-btn').addEventListener('click', async () => {
+            try {
+              const { error } = await supabase.auth.signInWithPassword({
+                email: prompt('请输入邮箱：'),
+                password: prompt('请输入密码：')
+              });
+              if (error) throw error;
+              showToast('✅ 登录成功！', 'success');
+              updateAuthStatus();
+            } catch (error) {
+              showToast(`❌ 登录失败：${error.message}`, 'error');
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        authStatusEl.textContent = `❌ 认证异常：${error.message}`;
+        authStatusEl.style.color = '#f44336';
+      }
+    }
+
+    // === Customer Management ===
+    async function loadCustomers() {
+      try {
+        const { data, error } = await supabase
+          .from('customers')
+          .select('*')
+          .order('name', { ascending: true });
+
+        if (error) throw error;
+
+        const customersList = document.getElementById('customers-list');
+        customersList.innerHTML = '';
+
+        if (data.length === 0) {
+          customersList.innerHTML = '<p>暂无客户，请先添加</p>';
+          return;
+        }
+
+        data.forEach(customer => {
+          const row = document.createElement('div');
+          row.className = 'customer-row';
+          row.innerHTML = `
+            <span>${customer.name}</span>
+            <span class="customer-price">¥${customer.price.toFixed(2)}</span>
+            <button class="delete-customer" data-id="${customer.id}">🗑️</button>
+          `;
+          customersList.appendChild(row);
+        });
+
+        // Add delete handlers
+        document.querySelectorAll('.delete-customer').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const id = e.target.getAttribute('data-id');
+            if (!confirm('确定删除该客户？')) return;
+
+            try {
+              const { error } = await supabase
+                .from('customers')
+                .delete()
+                .eq('id', id);
+              if (error) throw error;
+
+              showToast('✅ 客户删除成功', 'success');
+              loadCustomers();
+            } catch (error) {
+              showToast(`❌ 删除失败：${error.message}`, 'error');
+            }
+          });
+        });
+      } catch (error) {
+        console.error('Load customers failed:', error);
+        showToast(`❌ 加载客户失败：${error.message}`, 'error');
+      }
+    }
+
+    async function addCustomer() {
+      const nameInput = document.getElementById('customer-name');
+      const priceInput = document.getElementById('customer-price');
+
+      const name = nameInput.value.trim();
+      const price = parseFloat(priceInput.value);
+
+      if (!name) {
+        showToast('⚠️ 请填写客户姓名', 'warning');
+        return;
+      }
+
+      if (isNaN(price) || price <= 0) {
+        showToast('⚠️ 单价必须大于 0', 'warning');
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('customers')
+          .insert([{ name, price }])
+          .select();
+
+        if (error) throw error;
+
+        showToast('✅ 客户添加成功', 'success');
+        nameInput.value = '';
+        priceInput.value = '68.00';
+        loadCustomers();
+      } catch (error) {
+        console.error('Add customer failed:', error);
+        showToast(`❌ 添加失败：${error.message}`, 'error');
+      }
+    }
+
+    // === Bill Recording ===
+    async function recordBill() {
+      const customerInput = document.getElementById('customer-bill');
+      const qtyInput = document.getElementById('qty-bill');
+      const paidSelect = document.getElementById('paid-bill');
+
+      const customerName = customerInput.value.trim();
+      const qty = parseInt(qtyInput.value) || 1;
+      const paid = paidSelect.value === 'true';
+
+      if (!customerName) {
+        showToast('⚠️ 请填写客户姓名', 'warning');
+        return;
+      }
+
+      try {
+        // Get customer ID
+        const { data: customers, error: customerError } = await supabase
+          .from('customers')
+          .select('id, price')
+          .eq('name', customerName)
+          .limit(1);
+
+        if (customerError) throw customerError;
+        if (customers.length === 0) {
+          showToast('⚠️ 客户未找到，请先在【客户管理】页面添加', 'warning');
+          return;
+        }
+
+        const customer = customers[0];
+        const amount = customer.price * qty;
+        const date = new Date().toISOString().split('T')[0];
+
+        const { error: billError } = await supabase
+          .from('bills')
+          .insert([
+            {
+              customer_id: customer.id,
+              qty,
+              amount,
+              paid,
+              date
+            }
+          ]);
+
+        if (billError) throw billError;
+
+        showToast('✅ 记录成功！', 'success');
+        customerInput.value = '';
+        qtyInput.value = '1';
+        paidSelect.value = 'false';
+      } catch (error) {
+        console.error('Record bill failed:', error);
+        showToast(`❌ 记录失败：${error.message}`, 'error');
+      }
+    }
+
+    // === Accounts Receivable ===
+    async function loadAccountsReceivable() {
+      try {
+        // SQL: SELECT c.name, SUM(b.amount) as ar, MAX(b.date) as last_date FROM bills b JOIN customers c ON b.customer_id = c.id WHERE b.paid = false GROUP BY c.name ORDER BY ar DESC
+        const { data, error } = await supabase
+          .rpc('get_accounts_receivable'); // Requires PostgreSQL function
+
+        if (error) throw error;
+
+        const arList = document.getElementById('ar-list');
+        arList.innerHTML = '';
+
+        if (data.length === 0) {
+          arList.innerHTML = '<p>暂无欠款记录</p>';
+          return;
+        }
+
+        data.forEach(row => {
+          const item = document.createElement('div');
+          item.className = 'ar-item';
+          item.innerHTML = `
+            ${row.name} → ¥${row.ar.toFixed(2)}
+            <span class="ar-status status-ar">赊账</span>
+            <div style="font-size:0.875rem;color:#666;margin-top:4px;">最后交易：${row.last_date}</div>
+          `;
+          arList.appendChild(item);
+        });
+      } catch (error) {
+        console.error('Load AR failed:', error);
+        showToast(`❌ 加载欠款失败：${error.message}`, 'error');
+      }
+    }
+
+    // === Excel Export ===
+    function exportToExcel(data) {
+      if (!data || data.length === 0) return;
+
+      // Create worksheet
+      const ws = XLSX.utils.json_to_sheet(data);
+
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 20 }, // 客户名
+        { wch: 15 }, // 欠款金额
+        { wch: 20 }, // 最后交易日期
+        { wch: 12 }  // 状态
+      ];
+
+      // Create workbook and add worksheet
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '客户账单');
+
+      // Generate Excel file
+      const today = new Date().toISOString().slice(0,10).replace(/-/g, '');
+      XLSX.writeFile(wb, `烤鸭送货账单_${today}.xlsx`);
+      showToast('✅ Excel 导出成功！', 'success');
+    }
+
+    // === Init ===
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Initialize tab
+      initTabFromHash();
+
+      // Initialize Supabase
+      supabase = initSupabase();
+
+      // Load auth status
+      if (supabase) {
+        await updateAuthStatus();
+      }
+
+      // Load customers
+      if (supabase) {
+        await loadCustomers();
+      }
+
+      // Load AR
+      if (supabase) {
+        await loadAccountsReceivable();
+      }
+
+      // Event listeners
+      document.getElementById('record-btn').addEventListener('click', recordBill);
+      document.getElementById('add-customer').addEventListener('click', addCustomer);
+      document.getElementById('export-excel').addEventListener('click', async () => {
+        try {
+          const { data, error } = await supabase
+            .rpc('get_accounts_receivable');
+
+          if (error) throw error;
+
+          if (data.length === 0) {
+            showToast('⚠️ 暂无欠款数据，无法导出', 'warning');
+            return;
+          }
+
+          // Format for Excel
+          const excelData = data.map(row => ({
+            '客户名': row.name,
+            '欠款金额': `¥${row.ar.toFixed(2)}`,
+            '最后交易日期': row.last_date,
+            '状态': '赊账'
+          }));
+
+          exportToExcel(excelData);
+        } catch (error) {
+          console.error('Export failed:', error);
+          showToast(`❌ 导出失败：${error.message}`, 'error');
+        }
+      });
+
+      // Customer search datalist
+      async function updateCustomerList() {
+        const customersList = document.getElementById('customers-bill');
+        customersList.innerHTML = '';
+
+        try {
+          const { data, error } = await supabase
+            .from('customers')
+            .select('name')
+            .order('name', { ascending: true });
+
+          if (error) throw error;
+
+          data.forEach(customer => {
+            const option = document.createElement('option');
+            option.value = customer.name;
+            customersList.appendChild(option);
+          });
+        } catch (error) {
+          console.error('Update customer list failed:', error);
+        }
+      }
+
+      if (supabase) {
+        await updateCustomerList();
+      }
+    });
+  </script>
+</body>
+</html>
